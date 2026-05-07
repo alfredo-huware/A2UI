@@ -1,0 +1,241 @@
+[
+  {
+    "beginRendering": {
+      "surfaceId": "project-creation",
+      "root": "root"
+    }
+  },
+  {
+    "surfaceUpdate": {
+      "surfaceId": "project-creation",
+      "components": [
+        {
+          "id": "root",
+          "component": "Card",
+          "child": "main-column"
+        },
+        {
+          "id": "main-column",
+          "component": "Column",
+          "children": [
+            "header-text",
+            "form-column",
+            "submit-row"
+          ],
+          "align": "stretch"
+        },
+        {
+          "id": "header-text",
+          "component": "Text",
+          "text": "Crea Nuovo Progetto",
+          "variant": "h3"
+        },
+        {
+          "id": "form-column",
+          "component": "Column",
+          "children": [
+            "numero-preventivo",
+            "cliente-picker",
+            "sede-picker",
+            "tipologia-progetto-picker",
+            "tipologia-prodotto-picker",
+            "capacita-netta",
+            "percorso-sincronizzazione",
+            "documenti-btn"
+          ],
+          "align": "stretch"
+        },
+        {
+          "id": "numero-preventivo",
+          "component": "TextField",
+          "label": "Numero Preventivo (Project Number)",
+          "value": {
+            "path": "/numeroPreventivo"
+          },
+          "variant": "shortText",
+          "checks": [
+            {
+              "condition": {
+                "call": "required",
+                "args": {
+                  "value": {
+                    "path": "/numeroPreventivo"
+                  }
+                }
+              },
+              "message": "Numero Preventivo \u00e8 obbligatorio"
+            }
+          ]
+        },
+        {
+          "id": "cliente-picker",
+          "component": "ChoicePicker",
+          "label": "Cliente",
+          "value": {
+            "path": "/cliente"
+          },
+          "variant": "mutuallyExclusive",
+          "options": [
+            {
+              "label": "Cliente 1",
+              "value": "cliente1"
+            },
+            {
+              "label": "Cliente 2",
+              "value": "cliente2"
+            },
+            {
+              "label": "Cliente 3",
+              "value": "cliente3"
+            }
+          ]
+        },
+        {
+          "id": "sede-picker",
+          "component": "ChoicePicker",
+          "label": "Sede",
+          "value": {
+            "path": "/sede"
+          },
+          "variant": "mutuallyExclusive",
+          "options": [
+            {
+              "label": "Sede 1",
+              "value": "sede1"
+            },
+            {
+              "label": "Sede 2",
+              "value": "sede2"
+            },
+            {
+              "label": "Sede 3",
+              "value": "sede3"
+            }
+          ]
+        },
+        {
+          "id": "tipologia-progetto-picker",
+          "component": "ChoicePicker",
+          "label": "Tipologia Progetto",
+          "value": {
+            "path": "/tipologiaProgetto"
+          },
+          "variant": "mutuallyExclusive",
+          "options": [
+            {
+              "label": "Greenfield",
+              "value": "greenfield"
+            },
+            {
+              "label": "Greenfield Building included",
+              "value": "greenfield_building"
+            },
+            {
+              "label": "Brownfield",
+              "value": "brownfield"
+            }
+          ]
+        },
+        {
+          "id": "tipologia-prodotto-picker",
+          "component": "ChoicePicker",
+          "label": "Tipologia Prodotto",
+          "value": {
+            "path": "/tipologiaProdotto"
+          },
+          "variant": "mutuallyExclusive",
+          "options": [
+            {
+              "label": "Car",
+              "value": "car"
+            },
+            {
+              "label": "Van",
+              "value": "van"
+            },
+            {
+              "label": "Cab",
+              "value": "cab"
+            },
+            {
+              "label": "Bumpers",
+              "value": "bumpers"
+            },
+            {
+              "label": "Parts",
+              "value": "parts"
+            },
+            {
+              "label": "Bus",
+              "value": "bus"
+            },
+            {
+              "label": "Truck",
+              "value": "truck"
+            }
+          ]
+        },
+        {
+          "id": "capacita-netta",
+          "component": "TextField",
+          "label": "Capacit\u00e0 Netta (Net Capacity) kW",
+          "value": {
+            "path": "/capacitaNetta"
+          },
+          "variant": "number"
+        },
+        {
+          "id": "percorso-sincronizzazione",
+          "component": "TextField",
+          "label": "Percorso Sincronizzazione (Sync Path)",
+          "value": {
+            "path": "/percorsoSincronizzazione"
+          },
+          "variant": "shortText"
+        },
+        {
+          "id": "upload-text",
+          "component": "Text",
+          "text": "Upload Documenti",
+          "variant": "body"
+        },
+        {
+          "id": "documenti-btn",
+          "component": "Button",
+          "child": "upload-text",
+          "action": {
+            "event": {
+              "name": "uploadDocumenti"
+            }
+          },
+          "variant": "outline"
+        },
+        {
+          "id": "submit-text",
+          "component": "Text",
+          "text": "Crea Progetto",
+          "variant": "body"
+        },
+        {
+          "id": "submit-btn",
+          "component": "Button",
+          "child": "submit-text",
+          "action": {
+            "event": {
+              "name": "createProject"
+            }
+          },
+          "variant": "primary"
+        },
+        {
+          "id": "submit-row",
+          "component": "Row",
+          "children": [
+            "submit-btn"
+          ],
+          "justify": "center"
+        }
+      ]
+    }
+  }
+]

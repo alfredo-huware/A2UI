@@ -1,0 +1,44 @@
+from google.adk.agents import Agent
+from a2ui.schema.manager import A2uiSchemaManager
+from a2ui.basic_catalog.provider import BasicCatalog
+from .resources import get_resources
+from .tools import start_deployment
+from .utils.a2ui import a2ui_callback
+
+schema_manager = A2uiSchemaManager(
+    version="0.8",
+    catalogs=[BasicCatalog.get_config("0.8", examples_path="agent/catalogs/")],
+)
+
+instruction = schema_manager.generate_system_prompt(
+    role_description=(
+        "You are an AI infrastructure assistant."
+    ),
+    workflow_description=(
+        "Analyze the user's request and return structured UI when appropriate. "
+        "When the user requests to start a process, present them with a button to do so. "
+        "If you receive an event with name 'submit' and formId 'contact-form', acknowledge that the fake process has started. "
+        "When the user wants to create a new project, you MUST use the EXACT UI layout and component structure provided in the 'project_creation' example. Fill in the components as shown in the example to help them create the project."
+    ),
+    ui_description=(
+        "Use cards for resource summaries, rows and columns for comparisons, "
+        "icons for status indicators, and buttons for actions. "
+        "To create a button that starts the fake process, you MUST use EXACTLY this JSON structure: "
+        '{ "id": "button-1", "component": "Button", "child": "Avvia Processo", "variant": "primary", "action": { "event": { "name": "submit", "context": { "formId": "contact-form" } } } } '
+        "Do NOT use markdown formatting in text values. Use the usageHint "
+        "property for heading levels instead. "
+        "Respond ONLY with the A2UI JSON array. Do NOT include any text "
+        "outside the JSON. Put all explanations into Text components."
+    ),
+    include_schema=True,
+    include_examples=True,
+)
+
+root_agent = Agent(
+    model="gemini-3-flash-preview",
+    name="cloud_dashboard",
+    description="A cloud infrastructure assistant that renders rich A2UI interfaces.",
+    instruction=instruction,
+    tools=[get_resources, start_deployment],
+    after_model_callback=a2ui_callback,
+)
