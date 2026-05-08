@@ -1,8 +1,6 @@
 from google.adk.agents import Agent
 from a2ui.schema.manager import A2uiSchemaManager
 from a2ui.basic_catalog.provider import BasicCatalog
-from .resources import get_resources
-from .tools import start_deployment
 from .utils.a2ui import a2ui_callback
 
 schema_manager = A2uiSchemaManager(
@@ -36,9 +34,9 @@ instruction = schema_manager.generate_system_prompt(
 
 root_agent = Agent(
     model="gemini-3-flash-preview",
-    name="cloud_dashboard",
-    description="A cloud infrastructure assistant that renders rich A2UI interfaces.",
+    name="project_assistant",
+    description="An AI project assistant.",
     instruction=instruction,
-    tools=[get_resources, start_deployment],
+    tools=[],
     after_model_callback=a2ui_callback,
 )

@@ -92,7 +92,10 @@ async def agent_endpoint(request: Request):
 
         try:
             msg_id = _make_id("msg")
-            active_messages: set[str] = set()
+            text_open = False
+            text_buffer = ""
+            text_decided = False
+            text_suppressed = False
             sent_tool_calls: set[str] = set()
 
             async for event in runner.run_async(
@@ -105,32 +108,49 @@ async def agent_endpoint(request: Request):
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         # --- Streaming text ---
+                        # The model is instructed to reply with A2UI JSON only.
+                        # Sniff the first non-whitespace char: if it's `[`, `{`,
+                        # or a markdown code fence, suppress text events so the
+                        # raw JSON doesn't appear next to the rendered component.
                         if part.text:
-                            text_val = part.text
-                            # Skip raw A2UI JSON blocks (they come as inline_data after the callback)
-                            if any(k in text_val for k in ("beginRendering", "surfaceUpdate", "dataModelUpdate")):
+                            if text_suppressed:
                                 continue
-
-                            if msg_id not in active_messages:
+                            if not text_decided:
+                                text_buffer += part.text
+                                stripped = text_buffer.lstrip()
+                                if not stripped:
+                                    continue  # keep buffering whitespace
+                                if stripped[0] in ("[", "{") or stripped.startswith("```"):
+                                    text_suppressed = True
+                                    text_decided = True
+                                    text_buffer = ""
+                                    continue
+                                text_decided = True
                                 yield encoder.encode(TextMessageStartEvent(
                                     type=EventType.TEXT_MESSAGE_START,
                                     message_id=msg_id,
                                     role="assistant",
                                 ))
-                                active_messages.add(msg_id)
-
+                                text_open = True
+                                yield encoder.encode(TextMessageContentEvent(
+                                    type=EventType.TEXT_MESSAGE_CONTENT,
+                                    message_id=msg_id,
+                                    delta=text_buffer,
+                                ))
+                                text_buffer = ""
+                                continue
+                            if not text_open:
+                                yield encoder.encode(TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START,
+                                    message_id=msg_id,
+                                    role="assistant",
+                                ))
+                                text_open = True
                             yield encoder.encode(TextMessageContentEvent(
                                 type=EventType.TEXT_MESSAGE_CONTENT,
                                 message_id=msg_id,
-                                delta=text_val,
+                                delta=part.text,
                             ))
-
-                            if not event.partial:
-                                yield encoder.encode(TextMessageEndEvent(
-                                    type=EventType.TEXT_MESSAGE_END,
-                                    message_id=msg_id,
-                                ))
-                                active_messages.discard(msg_id)
 
                         # --- A2UI inline data (produced by a2ui_callback) ---
                         if part.inline_data:
@@ -189,11 +209,10 @@ async def agent_endpoint(request: Request):
                             content=content,
                         ))
 
-            # Close any open text streams
-            for m_id in active_messages:
+            if text_open:
                 yield encoder.encode(TextMessageEndEvent(
                     type=EventType.TEXT_MESSAGE_END,
-                    message_id=m_id,
+                    message_id=msg_id,
                 ))
 
         except Exception as e:
