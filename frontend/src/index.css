@@ -1,0 +1,128 @@
+@import url('https://rsms.me/inter/inter.css');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Linear-inspired design system. All colors HSL. */
+
+@layer base {
+  :root {
+    /* Light mode (rarely used; dark is default) */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+    --primary: 258 90% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 10% 8%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 258 90% 96%;
+    --accent-foreground: 258 90% 30%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 258 90% 60%;
+    --radius: 0.625rem;
+
+    --surface-1: 240 10% 99%;
+    --surface-2: 240 6% 96%;
+    --elev: 240 10% 8%;
+
+    --status-idle: 240 4% 60%;
+    --status-thinking: 258 90% 60%;
+    --status-tool: 38 92% 50%;
+    --status-error: 0 72% 51%;
+    --status-done: 142 71% 45%;
+
+    --sidebar-background: 240 8% 98%;
+    --sidebar-foreground: 240 6% 30%;
+    --sidebar-primary: 258 90% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 94%;
+    --sidebar-accent-foreground: 240 10% 8%;
+    --sidebar-border: 240 6% 90%;
+    --sidebar-ring: 258 90% 60%;
+  }
+
+  .dark {
+    --background: 240 10% 6%;
+    --foreground: 240 5% 96%;
+    --card: 240 10% 8%;
+    --card-foreground: 240 5% 96%;
+    --popover: 240 10% 8%;
+    --popover-foreground: 240 5% 96%;
+    --primary: 258 90% 66%;
+    --primary-foreground: 240 10% 6%;
+    --secondary: 240 6% 12%;
+    --secondary-foreground: 240 5% 96%;
+    --muted: 240 6% 14%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 258 50% 18%;
+    --accent-foreground: 258 90% 80%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 240 10% 6%;
+    --border: 240 6% 16%;
+    --input: 240 6% 16%;
+    --ring: 258 90% 66%;
+
+    --surface-1: 240 10% 8%;
+    --surface-2: 240 8% 11%;
+    --elev: 240 5% 96%;
+
+    --status-idle: 240 5% 50%;
+    --status-thinking: 258 90% 66%;
+    --status-tool: 38 92% 55%;
+    --status-error: 0 72% 55%;
+    --status-done: 142 71% 50%;
+
+    --sidebar-background: 240 10% 7%;
+    --sidebar-foreground: 240 5% 70%;
+    --sidebar-primary: 258 90% 66%;
+    --sidebar-primary-foreground: 240 10% 6%;
+    --sidebar-accent: 240 6% 12%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 6% 14%;
+    --sidebar-ring: 258 90% 66%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02','cv03','cv04','cv11','ss01';
+  }
+  code, pre, .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border bg-card/60 backdrop-blur-sm;
+  }
+  .hairline { @apply border-border/70; }
+  .caret::after {
+    content: '';
+    display: inline-block;
+    width: 0.45em;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: -0.15em;
+    background: hsl(var(--primary));
+    animation: caret-blink 1s steps(2,start) infinite;
+  }
+}
+
+@keyframes caret-blink { to { visibility: hidden; } }
+
+/* Custom scrollbars */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 6px; }
+*::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
+*::-webkit-scrollbar-track { background: transparent; }
