@@ -19,6 +19,7 @@ export interface RenderCtx {
   setState: (updater: (s: Record<string, unknown>) => Record<string, unknown>) => void;
   emit: (action: Omit<A2UIAction, "state">) => void;
   renderChild: (id: string) => React.ReactNode;
+  hasComponent: (id: string) => boolean;
   component: A2UIComponent;
   /** props with bindings already resolved */
   props: Record<string, unknown>;
@@ -26,22 +27,61 @@ export interface RenderCtx {
 
 type Renderer = (ctx: RenderCtx) => React.ReactNode;
 
-const text = (v: unknown, fallback = "") => (v == null ? fallback : String(v));
+/**
+ * A2UI v0.8 wraps most scalar props in `{ literalString | literalNumber | literalBoolean | literalArray | path }`.
+ * `asText` extracts a printable string; `bindPathOf` returns the `$state.foo.bar` form for two-way bindings.
+ */
+function asText(v: unknown, fallback = ""): string {
+  if (v == null) return fallback;
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.literalString === "string") return o.literalString;
+    if (typeof o.literalNumber === "number") return String(o.literalNumber);
+    if (typeof o.literalBoolean === "boolean") return String(o.literalBoolean);
+    return fallback;
+  }
+  return fallback;
+}
+
+function bindPathOf(v: unknown): string | null {
+  if (v && typeof v === "object" && typeof (v as { path?: unknown }).path === "string") {
+    const p = (v as { path: string }).path;
+    return `$state${p.replace(/\//g, ".")}`;
+  }
+  return null;
+}
+
+function resolveValue(v: unknown, state: Record<string, unknown>): unknown {
+  const bind = bindPathOf(v);
+  if (bind) return resolveBinding(bind, state);
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if ("literalString" in o) return o.literalString;
+    if ("literalNumber" in o) return o.literalNumber;
+    if ("literalBoolean" in o) return o.literalBoolean;
+    if ("literalArray" in o) return o.literalArray;
+  }
+  return v;
+}
+
+const text = (v: unknown, fallback = "") => asText(v, fallback);
 
 export const A2UI_CATALOG: Record<string, Renderer> = {
-  Card: ({ props, renderChild }) => {
-    const children = Array.isArray(props.children) 
-      ? props.children 
+  Card: ({ props, renderChild, state }) => {
+    const children = Array.isArray(props.children)
+      ? props.children
       : (props.children?.explicitList ?? (props.child ? [props.child] : []));
     return (
       <div className="panel p-4 animate-fade-in flex flex-col h-full">
-        {props.title ? <div className="mb-3 font-semibold">{text(props.title)}</div> : null}
+        {props.title ? <div className="mb-3 font-semibold">{asText(resolveValue(props.title, state))}</div> : null}
         <div className="space-y-3">{children.map((id: string) => renderChild(id))}</div>
       </div>
     );
   },
-  Text: ({ props }) => {
-    const txt = props.text?.literalString ?? text(props.text);
+  Text: ({ props, state }) => {
+    const txt = asText(resolveValue(props.text, state));
     const hint = (props.usageHint ?? props.variant) as string;
     
     if (hint?.startsWith("h")) {
@@ -57,20 +97,25 @@ export const A2UI_CATALOG: Record<string, Renderer> = {
       </p>
     );
   },
-  Icon: ({ props }) => (
+  Icon: ({ props, state }) => (
     <Badge variant="secondary">
-      {props.name?.literalString ?? text(props.name, "Icon")}
+      {asText(resolveValue(props.name, state), "Icon")}
     </Badge>
   ),
-  Button: ({ props, component, emit }) => {
+  Button: ({ props, component, emit, renderChild, hasComponent }) => {
     const action = props.action ?? (component as any).action;
+    const isPrimary = props.primary === true || props.variant === "primary";
+    const childRef = typeof props.child === "string" ? props.child : null;
+    const childIsComponent = childRef !== null && hasComponent(childRef);
     return (
       <Button
-        variant={(props.variant as "default" | "secondary" | "outline" | "ghost" | "primary") === "primary" ? "default" : "secondary"}
+        variant={isPrimary ? "default" : "secondary"}
         size="sm"
         onClick={() => emit({ componentId: component.id, event: "click", value: action })}
       >
-        {text(props.child ?? props.label, "Submit")}
+        {childIsComponent
+          ? renderChild(childRef!)
+          : text(props.child ?? props.label, "Submit")}
       </Button>
     );
   },
@@ -108,16 +153,27 @@ export const A2UI_CATALOG: Record<string, Renderer> = {
     );
   },
   Input: ({ props, component, setState, state }) => {
-    const bindPath = (props.value as any)?.path;
-    const bind = bindPath ? `$state${bindPath.replace(/\//g, ".")}` : component.bindings?.find((b) => b.prop === "value")?.source;
-    const value = (bind ? resolveBinding(bind, state) : props.value) as string ?? "";
+    // v0.8 schema uses `text` for the value spec; LLM shortcuts often use `value`.
+    const valueSpec = props.text ?? props.value;
+    const bind = bindPathOf(valueSpec) ?? component.bindings?.find((b) => b.prop === "value")?.source;
+    const resolved = bind ? resolveBinding(bind, state) : resolveValue(valueSpec, state);
+    const value = resolved == null ? "" : String(resolved);
+    const labelText = asText(resolveValue(props.label, state));
+    const inputType =
+      props.textFieldType === "number"
+        ? "number"
+        : props.textFieldType === "date"
+        ? "date"
+        : props.textFieldType === "obscured"
+        ? "password"
+        : (props.type as string) ?? "text";
     return (
       <div className="space-y-1.5">
-        {props.label ? <Label className="text-xs text-muted-foreground">{text(props.label)}</Label> : null}
+        {labelText ? <Label className="text-xs text-muted-foreground">{labelText}</Label> : null}
         <Input
           value={value}
-          placeholder={text(props.placeholder, "")}
-          type={(props.type as string) ?? "text"}
+          placeholder={asText(resolveValue(props.placeholder, state))}
+          type={inputType}
           onChange={(e) => {
             if (bind) setState((s) => setNested(s, bind, e.target.value));
           }}
@@ -127,15 +183,34 @@ export const A2UI_CATALOG: Record<string, Renderer> = {
   },
   TextField: (ctx) => A2UI_CATALOG.Input(ctx),
   Select: ({ props, component, setState, state }) => {
-    const bindPath = (props.value as any)?.path;
-    const bind = bindPath ? `$state${bindPath.replace(/\//g, ".")}` : component.bindings?.find((b) => b.prop === "value")?.source;
-    const options = (props.options as Array<{ label: string; value: string }>) ?? [];
-    const value = (bind ? resolveBinding(bind, state) : props.value) as string ?? "";
+    // v0.8 MultipleChoice uses `selections` (array spec); LLM shortcuts/v0.9 use `value`.
+    const valueSpec = props.value ?? props.selections;
+    const bind = bindPathOf(valueSpec) ?? component.bindings?.find((b) => b.prop === "value")?.source;
+    const rawOptions = (props.options as Array<Record<string, unknown>>) ?? [];
+    const options = rawOptions.map((o) => ({
+      value: String(o.value ?? ""),
+      label: asText(resolveValue(o.label, state), String(o.value ?? "")),
+    }));
+    const resolvedSel = bind ? resolveBinding(bind, state) : resolveValue(valueSpec, state);
+    const value = Array.isArray(resolvedSel)
+      ? String(resolvedSel[0] ?? "")
+      : resolvedSel == null
+      ? ""
+      : String(resolvedSel);
+    const labelText = asText(resolveValue(props.label, state));
+    const isArrayBind =
+      Array.isArray(resolvedSel) ||
+      (valueSpec != null && typeof valueSpec === "object" && "literalArray" in (valueSpec as Record<string, unknown>));
+    const writeBind = (v: string) => {
+      if (!bind) return;
+      // If the source spec was an array (MultipleChoice.selections), preserve array shape.
+      setState((s) => setNested(s, bind, isArrayBind ? [v] : v));
+    };
     return (
       <div className="space-y-1.5">
-        {props.label ? <Label className="text-xs text-muted-foreground">{text(props.label)}</Label> : null}
-        <Select value={value} onValueChange={(v) => bind && setState((s) => setNested(s, bind, v))}>
-          <SelectTrigger><SelectValue placeholder={text(props.placeholder, "Select…")} /></SelectTrigger>
+        {labelText ? <Label className="text-xs text-muted-foreground">{labelText}</Label> : null}
+        <Select value={value} onValueChange={writeBind}>
+          <SelectTrigger><SelectValue placeholder={asText(resolveValue(props.placeholder, state), "Select…")} /></SelectTrigger>
           <SelectContent>
             {options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
@@ -144,23 +219,78 @@ export const A2UI_CATALOG: Record<string, Renderer> = {
     );
   },
   ChoicePicker: (ctx) => A2UI_CATALOG.Select(ctx),
-  Checkbox: ({ props, component, setState }) => {
-    const bind = component.bindings?.find((b) => b.prop === "checked")?.source;
-    const checked = Boolean(props.checked);
+  MultipleChoice: (ctx) => {
+    // v0.8 supports `variant: "checkbox" | "radio" | "dropdown"`.
+    const variant = ctx.props.variant as string | undefined;
+    if (variant === "checkbox") return A2UI_CATALOG.CheckboxGroup(ctx);
+    if (variant === "radio") return A2UI_CATALOG.RadioGroup(ctx);
+    return A2UI_CATALOG.Select(ctx);
+  },
+  CheckboxGroup: ({ props, component, setState, state }) => {
+    // Multi-select checkbox list. `selections` is a literalArray or path
+    // pointing to an array of selected values.
+    const valueSpec = props.value ?? props.selections;
+    const bind = bindPathOf(valueSpec) ?? component.bindings?.find((b) => b.prop === "value")?.source;
+    const rawOptions = (props.options as Array<Record<string, unknown>>) ?? [];
+    const options = rawOptions.map((o) => ({
+      value: String(o.value ?? ""),
+      label: asText(resolveValue(o.label, state), String(o.value ?? "")),
+    }));
+    const resolved = bind ? resolveBinding(bind, state) : resolveValue(valueSpec, state);
+    const selected = new Set<string>(
+      Array.isArray(resolved) ? resolved.map((v) => String(v)) : [],
+    );
+    const labelText = asText(resolveValue(props.label, state));
+    const toggle = (val: string, checked: boolean) => {
+      if (!bind) return;
+      const next = new Set(selected);
+      if (checked) next.add(val); else next.delete(val);
+      setState((s) => setNested(s, bind, Array.from(next)));
+    };
+    return (
+      <div className="space-y-2">
+        {labelText ? <Label className="text-xs text-muted-foreground">{labelText}</Label> : null}
+        <div className="space-y-1.5">
+          {options.map((o) => (
+            <label key={o.value} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={selected.has(o.value)}
+                onCheckedChange={(v) => toggle(o.value, Boolean(v))}
+              />
+              <span>{o.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  },
+  Checkbox: ({ props, component, setState, state }) => {
+    // v0.8 schema uses `value` ({ literalBoolean | path }); shortcut uses `checked`.
+    const valueSpec = props.value ?? props.checked;
+    const bind = bindPathOf(valueSpec) ?? component.bindings?.find((b) => b.prop === "checked")?.source;
+    const resolved = bind ? resolveBinding(bind, state) : resolveValue(valueSpec, state);
+    const checked = Boolean(resolved);
     return (
       <label className="inline-flex items-center gap-2 text-sm">
         <Checkbox
           checked={checked}
           onCheckedChange={(v) => bind && setState((s) => setNested(s, bind, Boolean(v)))}
         />
-        <span>{text(props.label)}</span>
+        <span>{asText(resolveValue(props.label, state))}</span>
       </label>
     );
   },
-  RadioGroup: ({ props, component, setState }) => {
-    const bind = component.bindings?.find((b) => b.prop === "value")?.source;
-    const options = (props.options as Array<{ label: string; value: string }>) ?? [];
-    const value = (props.value as string) ?? "";
+  CheckBox: (ctx) => A2UI_CATALOG.Checkbox(ctx),
+  RadioGroup: ({ props, component, setState, state }) => {
+    const valueSpec = props.value;
+    const bind = bindPathOf(valueSpec) ?? component.bindings?.find((b) => b.prop === "value")?.source;
+    const rawOptions = (props.options as Array<Record<string, unknown>>) ?? [];
+    const options = rawOptions.map((o) => ({
+      value: String(o.value ?? ""),
+      label: asText(resolveValue(o.label, state), String(o.value ?? "")),
+    }));
+    const resolved = bind ? resolveBinding(bind, state) : resolveValue(valueSpec, state);
+    const value = resolved == null ? "" : String(resolved);
     return (
       <RadioGroup value={value} onValueChange={(v) => bind && setState((s) => setNested(s, bind, v))} className="space-y-1.5">
         {options.map((o) => (
@@ -190,9 +320,9 @@ export const A2UI_CATALOG: Record<string, Renderer> = {
     );
   },
   Divider: () => <Separator />,
-  Badge: ({ props }) => (
+  Badge: ({ props, state }) => (
     <Badge variant={(props.variant as "default" | "secondary" | "outline" | "destructive") ?? "secondary"}>
-      {text(props.label)}
+      {asText(resolveValue(props.label, state))}
     </Badge>
   ),
   Spinner: () => (

@@ -79,6 +79,7 @@ export function A2UIRenderer({ tree, onAction }: Props) {
             setState: setLocalState,
             emit,
             renderChild,
+            hasComponent: (cid) => componentMap.has(cid),
             component: c,
             props: resolvedProps,
           })}

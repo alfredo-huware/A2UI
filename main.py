@@ -90,13 +90,73 @@ async def agent_endpoint(request: Request):
             run_id=run_id,
         ))
 
+        A2UI_OPEN = "<a2ui-json>"
+        A2UI_CLOSE = "</a2ui-json>"
+
         try:
             msg_id = _make_id("msg")
             text_open = False
-            text_buffer = ""
-            text_decided = False
-            text_suppressed = False
+            text_pending = ""        # buffered text waiting to be safely emitted (may end in a partial tag prefix)
+            inside_a2ui_block = False  # currently between <a2ui-json> and </a2ui-json>
+            bare_json_suppress = False  # model emitted JSON without the wrapper — suppress everything
+            received_partial_text = False
             sent_tool_calls: set[str] = set()
+
+            def _filter_chunk(chunk: str) -> str:
+                """Strip <a2ui-json>...</a2ui-json> blocks from a streaming text chunk.
+
+                Returns text safe to stream right now. Any tail that might be a
+                split tag is held in `text_pending` until the next chunk.
+                """
+                nonlocal text_pending, inside_a2ui_block, bare_json_suppress
+                text_pending += chunk
+                output = ""
+                while text_pending:
+                    if inside_a2ui_block:
+                        idx = text_pending.find(A2UI_CLOSE)
+                        if idx >= 0:
+                            text_pending = text_pending[idx + len(A2UI_CLOSE):]
+                            inside_a2ui_block = False
+                            continue
+                        # Hold back any trailing partial close tag prefix
+                        keep = 0
+                        for i in range(min(len(text_pending), len(A2UI_CLOSE) - 1), 0, -1):
+                            if text_pending.endswith(A2UI_CLOSE[:i]):
+                                keep = i
+                                break
+                        text_pending = text_pending[-keep:] if keep else ""
+                        return output
+                    # Outside a block.
+                    # If the model is emitting bare JSON (no wrapper) at the very
+                    # start, the agent callback handles the final parse — drop
+                    # the streamed text so it doesn't leak as raw JSON.
+                    if not bare_json_suppress and not output and not text_open:
+                        stripped = text_pending.lstrip()
+                        if stripped and (stripped[0] in ("[", "{") or stripped.startswith("```")):
+                            bare_json_suppress = True
+                    if bare_json_suppress:
+                        text_pending = ""
+                        return output
+                    idx = text_pending.find(A2UI_OPEN)
+                    if idx >= 0:
+                        output += text_pending[:idx]
+                        text_pending = text_pending[idx + len(A2UI_OPEN):]
+                        inside_a2ui_block = True
+                        continue
+                    # Hold back any trailing partial open tag prefix
+                    keep = 0
+                    for i in range(min(len(text_pending), len(A2UI_OPEN) - 1), 0, -1):
+                        if text_pending.endswith(A2UI_OPEN[:i]):
+                            keep = i
+                            break
+                    if keep:
+                        output += text_pending[:-keep]
+                        text_pending = text_pending[-keep:]
+                    else:
+                        output += text_pending
+                        text_pending = ""
+                    return output
+                return output
 
             async for event in runner.run_async(
                 user_id="local-user",
@@ -108,59 +168,31 @@ async def agent_endpoint(request: Request):
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         # --- Streaming text ---
-                        # The model is instructed to reply with A2UI JSON only,
-                        # wrapped in <a2ui-json>...</a2ui-json>. Sniff the buffer
-                        # for these markers and suppress text events so the raw
-                        # JSON doesn't appear next to the rendered component.
+                        # Strip <a2ui-json>...</a2ui-json> blocks so the raw JSON
+                        # never reaches the chat. Conversational text outside
+                        # the tags streams through normally.
                         if part.text:
-                            if text_suppressed:
+                            # SSE streaming emits partial deltas followed by a
+                            # non-partial event with the full accumulated text.
+                            # Skip the aggregated final to avoid duplication.
+                            if event.partial:
+                                received_partial_text = True
+                            elif received_partial_text:
                                 continue
-                            if not text_decided:
-                                text_buffer += part.text
-                                stripped = text_buffer.lstrip()
-                                if not stripped:
-                                    continue  # keep buffering whitespace
-                                a2ui_tag = "<a2ui-json>"
-                                a2ui_keywords = ("beginRendering", "surfaceUpdate", "dataModelUpdate")
-                                if (
-                                    stripped[0] in ("[", "{")
-                                    or stripped.startswith("```")
-                                    or stripped.startswith(a2ui_tag)
-                                    or any(kw in text_buffer for kw in a2ui_keywords)
-                                ):
-                                    text_suppressed = True
-                                    text_decided = True
-                                    text_buffer = ""
-                                    continue
-                                # Possibly a partial A2UI tag spanning chunks — keep buffering
-                                if stripped.startswith("<") and len(stripped) < len(a2ui_tag) and a2ui_tag.startswith(stripped):
-                                    continue
-                                text_decided = True
-                                yield encoder.encode(TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
-                                    message_id=msg_id,
-                                    role="assistant",
-                                ))
-                                text_open = True
+                            safe_text = _filter_chunk(part.text)
+                            if safe_text and not safe_text.isspace():
+                                if not text_open:
+                                    yield encoder.encode(TextMessageStartEvent(
+                                        type=EventType.TEXT_MESSAGE_START,
+                                        message_id=msg_id,
+                                        role="assistant",
+                                    ))
+                                    text_open = True
                                 yield encoder.encode(TextMessageContentEvent(
                                     type=EventType.TEXT_MESSAGE_CONTENT,
                                     message_id=msg_id,
-                                    delta=text_buffer,
+                                    delta=safe_text,
                                 ))
-                                text_buffer = ""
-                                continue
-                            if not text_open:
-                                yield encoder.encode(TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
-                                    message_id=msg_id,
-                                    role="assistant",
-                                ))
-                                text_open = True
-                            yield encoder.encode(TextMessageContentEvent(
-                                type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=msg_id,
-                                delta=part.text,
-                            ))
 
                         # --- A2UI inline data (produced by a2ui_callback) ---
                         if part.inline_data:
