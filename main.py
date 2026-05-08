@@ -108,10 +108,10 @@ async def agent_endpoint(request: Request):
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         # --- Streaming text ---
-                        # The model is instructed to reply with A2UI JSON only.
-                        # Sniff the first non-whitespace char: if it's `[`, `{`,
-                        # or a markdown code fence, suppress text events so the
-                        # raw JSON doesn't appear next to the rendered component.
+                        # The model is instructed to reply with A2UI JSON only,
+                        # wrapped in <a2ui-json>...</a2ui-json>. Sniff the buffer
+                        # for these markers and suppress text events so the raw
+                        # JSON doesn't appear next to the rendered component.
                         if part.text:
                             if text_suppressed:
                                 continue
@@ -120,10 +120,20 @@ async def agent_endpoint(request: Request):
                                 stripped = text_buffer.lstrip()
                                 if not stripped:
                                     continue  # keep buffering whitespace
-                                if stripped[0] in ("[", "{") or stripped.startswith("```"):
+                                a2ui_tag = "<a2ui-json>"
+                                a2ui_keywords = ("beginRendering", "surfaceUpdate", "dataModelUpdate")
+                                if (
+                                    stripped[0] in ("[", "{")
+                                    or stripped.startswith("```")
+                                    or stripped.startswith(a2ui_tag)
+                                    or any(kw in text_buffer for kw in a2ui_keywords)
+                                ):
                                     text_suppressed = True
                                     text_decided = True
                                     text_buffer = ""
+                                    continue
+                                # Possibly a partial A2UI tag spanning chunks — keep buffering
+                                if stripped.startswith("<") and len(stripped) < len(a2ui_tag) and a2ui_tag.startswith(stripped):
                                     continue
                                 text_decided = True
                                 yield encoder.encode(TextMessageStartEvent(

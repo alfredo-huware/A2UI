@@ -33,7 +33,7 @@ instruction = schema_manager.generate_system_prompt(
 )
 
 root_agent = Agent(
-    model="gemini-3-flash-preview",
+    model="gemini-3.1-pro",
     name="project_assistant",
     description="An AI project assistant.",
     instruction=instruction,
