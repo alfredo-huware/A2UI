@@ -228,21 +228,25 @@ export const A2UI_CATALOG: Record<string, Renderer> = {
   },
   CheckboxGroup: ({ props, component, setState, state }) => {
     // Multi-select checkbox list. `selections` is a literalArray or path
-    // pointing to an array of selected values.
+    // pointing to an array of selected values. If no path is provided, fall
+    // back to a state slot keyed by the component id so the UI is interactive.
     const valueSpec = props.value ?? props.selections;
-    const bind = bindPathOf(valueSpec) ?? component.bindings?.find((b) => b.prop === "value")?.source;
+    const bind =
+      bindPathOf(valueSpec) ??
+      component.bindings?.find((b) => b.prop === "value")?.source ??
+      `$state.${component.id}`;
     const rawOptions = (props.options as Array<Record<string, unknown>>) ?? [];
     const options = rawOptions.map((o) => ({
       value: String(o.value ?? ""),
       label: asText(resolveValue(o.label, state), String(o.value ?? "")),
     }));
-    const resolved = bind ? resolveBinding(bind, state) : resolveValue(valueSpec, state);
+    const resolvedBound = resolveBinding(bind, state);
+    const resolved = resolvedBound !== undefined ? resolvedBound : resolveValue(valueSpec, state);
     const selected = new Set<string>(
       Array.isArray(resolved) ? resolved.map((v) => String(v)) : [],
     );
     const labelText = asText(resolveValue(props.label, state));
     const toggle = (val: string, checked: boolean) => {
-      if (!bind) return;
       const next = new Set(selected);
       if (checked) next.add(val); else next.delete(val);
       setState((s) => setNested(s, bind, Array.from(next)));
